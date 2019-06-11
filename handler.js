@@ -1,6 +1,5 @@
 'use strict';
 
-
 const AWS = require('aws-sdk'),
       fs = require('fs'),
       util = require('util'),
@@ -14,7 +13,7 @@ module.exports.convert = async ({ Records: records }, context) => {
           
           try {
               const { key } = record.s3.object;
-              const { bucket_name } = record.s3.bucket.name;
+              const bucket_name = record.s3['bucket']['name'];
               const video_name = key.split('/').slice(-1)[0];
               const video_base_name = video_name.split('.')[0];
               
