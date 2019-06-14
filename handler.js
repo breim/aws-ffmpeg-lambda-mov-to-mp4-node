@@ -14,13 +14,14 @@ module.exports.convert = async ({ Records: records }, context) => {
           try {
               const { key } = record.s3.object;
               const bucket_name = record.s3['bucket']['name'];
-              const video_name = key.split('/').slice(-1)[0];
+              const normalized_key_name = unescape(key);
+              const video_name = normalized_key_name.split('/').slice(-1)[0];
               const video_base_name = video_name.split('.')[0];
               const numero_aleatorio = Math.floor(Math.random() * 1000);
-  
+
               const video = await s3.getObject({
                 Bucket: bucket_name,
-                Key: key
+                Key: normalized_key_name
               }).promise();
 
               const inputStream = fs.createWriteStream(`/tmp/${video_name}`);
@@ -34,7 +35,7 @@ module.exports.convert = async ({ Records: records }, context) => {
                 Body: outputFileBuffer,
                 Bucket: bucket_name,
                 ContentType: 'binary/octet-stream',
-                Key: key
+                Key: normalized_key_name
               }).promise();
 
           } catch(error) {
