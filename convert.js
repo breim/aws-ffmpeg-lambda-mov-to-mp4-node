@@ -24,8 +24,7 @@ module.exports.convert = async ({ Records: records }, context) => {
                 Key: normalized_key_name
               }).promise();
 
-              const inputStream = fs.createWriteStream(`/tmp/${video_name}`);
-              inputStream.write(video.Body);
+              fs.writeFileSync(`/tmp/${video_name}`, video.Body);
             
               const { stdout, stderr } = await exec(`/opt/ffmpeg/ffmpeg -i /tmp/${video_name} -vcodec libx264 -pix_fmt yuv420p -profile:v baseline -level 3 -f mp4 /tmp/${video_base_name}_${numero_aleatorio}.mp4`);
 
