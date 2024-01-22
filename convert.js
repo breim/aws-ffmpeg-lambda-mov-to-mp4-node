@@ -1,48 +1,52 @@
 'use strict';
 
-const AWS = require('aws-sdk'),
-      fs = require('fs'),
-      util = require('util'),
-      exec = util.promisify(require('child_process').exec),
-      s3 = new AWS.S3();
+const AWS = require('aws-sdk');
+const fs = require('fs').promises; // Usando a API promisificada do fs
+const { exec } = require('child_process').promises;
+const s3 = new AWS.S3();
 
 module.exports.convert = async ({ Records: records }, context) => {
-    try {
-      await Promise.all(
-        records.map(async record => {
-          
-          try {
-              const { key } = record.s3.object;
-              const bucket_name = record.s3['bucket']['name'];
-              const normalized_key_name = unescape(key);
-              const video_name = normalized_key_name.split('/').slice(-1)[0];
-              const video_base_name = video_name.split('.')[0];
-              const numero_aleatorio = Math.floor(Math.random() * 1000);
+  try {
+    await Promise.all(records.map(async (record) => {
+      try {
+        const key = decodeURIComponent(record.s3.object.key.replace(/\+/g, ' '));
+        const bucketName = record.s3.bucket.name;
+        const videoName = key.split('/').pop();
+        const videoBaseName = videoName.split('.')[0];
+        const randomNum = Math.floor(Math.random() * 1000);
+        const tempVideoPath = `/tmp/${videoName}`;
+        const convertedVideoPath = `/tmp/${videoBaseName}_${randomNum}.mp4`;
 
-              const video = await s3.getObject({
-                Bucket: bucket_name,
-                Key: normalized_key_name
-              }).promise();
+        // Downloading video from S3
+        const video = await s3.getObject({
+          Bucket: bucketName,
+          Key: key
+        }).promise();
 
-              fs.writeFileSync(`/tmp/${video_name}`, video.Body);
-            
-              const { stdout, stderr } = await exec(`/opt/ffmpeg/ffmpeg -i /tmp/${video_name} -vcodec libx264 -pix_fmt yuv420p -profile:v baseline -level 3 -f mp4 /tmp/${video_base_name}_${numero_aleatorio}.mp4`);
+        await fs.writeFile(tempVideoPath, video.Body);
 
-              const outputFileBuffer = await fs.readFileSync(`/tmp/${video_base_name}_${numero_aleatorio}.mp4`);
-  
-              await s3.putObject({
-                Body: outputFileBuffer,
-                Bucket: bucket_name,
-                ContentType: 'binary/octet-stream',
-                Key: normalized_key_name
-              }).promise();
+        // Converting video
+        await exec(`/opt/ffmpeg/ffmpeg -i ${tempVideoPath} -vcodec libx264 -pix_fmt yuv420p -profile:v baseline -level 3 -f mp4 ${convertedVideoPath}`);
 
-          } catch(error) {
-            console.log(error);
-          }
-        })
-      );
-    } catch(error) {
-      console.log(error);
-    }
+        const outputFileBuffer = await fs.readFile(convertedVideoPath);
+
+        // Uploading converted video to S3
+        await s3.putObject({
+          Body: outputFileBuffer,
+          Bucket: bucketName,
+          ContentType: 'video/mp4',
+          Key: `converted/${videoBaseName}_${randomNum}.mp4`
+        }).promise();
+
+        // Cleanup: remove temporary files
+        await fs.unlink(tempVideoPath);
+        await fs.unlink(convertedVideoPath);
+
+      } catch (error) {
+        console.error('Error processing record', record, error);
+      }
+    }));
+  } catch (error) {
+    console.error('Error in conversion process', error);
+  }
 };
